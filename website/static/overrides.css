@@ -1,6 +1,16 @@
 html body {
-  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    Fira Sans,
+    Droid Sans,
+    Helvetica Neue,
+    sans-serif;
 
   overflow-x: hidden;
 }
@@ -154,7 +164,8 @@ em {
 }
 
 .mainContainer .tldrSection ul li a {
-  font-size: 18px;
+  color: inherit !important;
+  font-size: inherit;
 }
 
 .tldrSection li::before {
@@ -592,4 +603,9 @@ a {
 }
 .tabs .nav-tabs > div {
   padding: 4px 12px;
+}
+
+/* Syntax Section */
+.syntaxLink:hover {
+  text-decoration: underline;
 }

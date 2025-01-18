@@ -9,6 +9,30 @@ Prettier ships with a handful of format options.
 
 If you change any options, it’s recommended to do it via a [configuration file](configuration.md). This way the Prettier CLI, [editor integrations](editors.md) and other tooling knows what options you use.
 
+## Experimental Ternaries
+
+Try prettier's [new ternary formatting](https://github.com/prettier/prettier/pull/13183) before it becomes the default behavior.
+
+Valid options:
+
+- `true` - Use curious ternaries, with the question mark after the condition.
+- `false` - Retain the default behavior of ternaries; keep question marks on the same line as the consequent.
+
+| Default | CLI Override               | API Override                    |
+| ------- | -------------------------- | ------------------------------- |
+| `false` | `--experimental-ternaries` | `experimentalTernaries: <bool>` |
+
+## Experimental Operator Position
+
+Valid options:
+
+- `"start"` - When binary expressions wrap lines, print operators at the start of new lines.
+- `"end"` - Default behavior; when binary expressions wrap lines, print operators at the end of previous lines.
+
+| Default | CLI Override                                                   | API Override                                                  |
+| ------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| `"end"` | <code>--experimental-operator-position <start&#124;end></code> | <code>experimentalOperatorPosition: "<start&#124;end>"</code> |
+
 ## Print Width
 
 Specify the line length that the printer will wrap on.
@@ -51,7 +75,7 @@ Indent lines with tabs instead of spaces.
 
 Setting `indent_style` in an [`.editorconfig` file](https://editorconfig.org/) will configure Prettier’s tab usage, unless overridden.
 
-(Tabs will be used for _indentation_ but Prettier uses spaces to _align_ things, such as in ternaries.)
+(Tabs will be used for _indentation_ but Prettier uses spaces to _align_ things, such as in ternaries. This behavior is known as [SmartTabs](https://www.emacswiki.org/emacs/SmartTabs).)
 
 ## Semicolons
 
@@ -102,8 +126,6 @@ Note that Prettier never unquotes numeric property names in Angular expressions,
 [quote-props-flow]: https://flow.org/try/#0PQKgBAAgZgNg9gdzCYAoVBjOA7AzgFzAA8wBeMAb1TDAAYAuMARlQF8g
 [quote-props-vue]: https://github.com/prettier/prettier/issues/10127
 
-If this option is set to `preserve`, `singleQuote` to `false` (default value), and `parser` to `json5`, double quotes are always used for strings. This effectively allows using the `json5` parser for “JSON with comments and trailing commas”.
-
 ## JSX Quotes
 
 Use single quotes instead of double quotes in JSX.
@@ -114,19 +136,19 @@ Use single quotes instead of double quotes in JSX.
 
 ## Trailing Commas
 
-_Default value changed from `none` to `es5` in v2.0.0_
+_Default value changed from `es5` to `all` in v3.0.0_
 
 Print trailing commas wherever possible in multi-line comma-separated syntactic structures. (A single-line array, for example, never gets trailing commas.)
 
 Valid options:
 
-- `"es5"` - Trailing commas where valid in ES5 (objects, arrays, etc.). No trailing commas in type parameters in TypeScript.
-- `"none"` - No trailing commas.
 - `"all"` - Trailing commas wherever possible (including [function parameters and calls](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Trailing_commas#Trailing_commas_in_functions)). To run, JavaScript code formatted this way needs an engine that supports ES2017 (Node.js 8+ or a modern browser) or [downlevel compilation](https://babeljs.io/docs/en/index). This also enables trailing commas in type parameters in TypeScript (supported since TypeScript 2.7 released in January 2018).
+- `"es5"` - Trailing commas where valid in ES5 (objects, arrays, etc.). Trailing commas in type parameters in TypeScript and Flow.
+- `"none"` - No trailing commas.
 
 | Default | CLI Override                                           | API Override                                           |
 | ------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| `"es5"` | <code>--trailing-comma <es5&#124;none&#124;all></code> | <code>trailingComma: "<es5&#124;none&#124;all>"</code> |
+| `"all"` | <code>--trailing-comma <all&#124;es5&#124;none></code> | <code>trailingComma: "<all&#124;es5&#124;none>"</code> |
 
 ## Bracket Spacing
 
@@ -140,6 +162,23 @@ Valid options:
 | Default | CLI Override           | API Override             |
 | ------- | ---------------------- | ------------------------ |
 | `true`  | `--no-bracket-spacing` | `bracketSpacing: <bool>` |
+
+## Object Wrap
+
+_First available in v3.5.0_
+
+Configure how Prettier wraps object literals when they could fit on one line or span multiple lines.
+
+By default, Prettier formats objects as multi-line if there is a newline prior to the first property. Authors can use this heuristic to contextually improve readability, though it has some downsides. See [Multi-line objects](rationale.md#multi-line-objects).
+
+Valid options:
+
+- `"preserve"` - Keep as multi-line, if there is a newline between the opening brace and first property.
+- `"collapse"` - Fit to a single line when possible.
+
+| Default      | CLI Override                                        | API Override                                        |
+| ------------ | --------------------------------------------------- | --------------------------------------------------- |
+| `"preserve"` | <code>--object-wrap <preserve&#124;collapse></code> | <code>objectWrap: "<preserve&#124;collapse>"</code> |
 
 ## Bracket Line
 
@@ -241,8 +280,6 @@ These two options can be used to format code starting and ending at a given char
 - Backwards to the start of the first line containing the selected statement.
 - Forwards to the end of the selected statement.
 
-These options cannot be used with `cursorOffset`.
-
 | Default    | CLI Override          | API Override        |
 | ---------- | --------------------- | ------------------- |
 | `0`        | `--range-start <int>` | `rangeStart: <int>` |
@@ -266,11 +303,12 @@ Valid options:
 - `"espree"` (via [espree](https://github.com/eslint/espree)) _First available in v2.2.0_
 - `"meriyah"` (via [meriyah](https://github.com/meriyah/meriyah)) _First available in v2.2.0_
 - `"acorn"` (via [acorn](https://github.com/acornjs/acorn)) _First available in v2.6.0_
-- `"css"` (via [postcss-scss](https://github.com/postcss/postcss-scss) and [postcss-less](https://github.com/shellscape/postcss-less), autodetects which to use) _First available in v1.7.1_
-- `"scss"` (same parsers as `"css"`, prefers postcss-scss) _First available in v1.7.1_
-- `"less"` (same parsers as `"css"`, prefers postcss-less) _First available in v1.7.1_
+- `"css"` (via [postcss](https://github.com/postcss/postcss)) _First available in v1.7.1_
+- `"scss"` (via [postcss-scss](https://github.com/postcss/postcss-scss)) _First available in v1.7.1_
+- `"less"` (via [postcss-less](https://github.com/shellscape/postcss-less)) _First available in v1.7.1_
 - `"json"` (via [@babel/parser parseExpression](https://babeljs.io/docs/en/next/babel-parser.html#babelparserparseexpressioncode-options)) _First available in v1.5.0_
 - `"json5"` (same parser as `"json"`, but outputs as [json5](https://json5.org/)) _First available in v1.13.0_
+- `"jsonc"` (same parser as `"json"`, but outputs as "JSON with Comments") _First available in v3.2.0_
 - `"json-stringify"` (same parser as `"json"`, but outputs like `JSON.stringify`) _First available in v1.13.0_
 - `"graphql"` (via [graphql/language](https://github.com/graphql/graphql-js/tree/master/src/language)) _First available in v1.5.0_
 - `"markdown"` (via [remark-parse](https://github.com/wooorm/remark/tree/main/packages/remark-parse)) _First available in v1.8.0_
@@ -281,13 +319,13 @@ Valid options:
 - `"lwc"` (same parser as `"html"`, but also formats LWC-specific syntax for unquoted template attributes) _First available in 1.17.0_
 - `"yaml"` (via [yaml](https://github.com/eemeli/yaml) and [yaml-unist-parser](https://github.com/ikatyang/yaml-unist-parser)) _First available in 1.14.0_
 
-[Custom parsers](api.md#custom-parser-api) are also supported. _First available in v1.5.0. Deprecated. Will be removed in v3.0.0 (superseded by the Plugin API)_
-
-| Default | CLI Override                                    | API Override                                               |
-| ------- | ----------------------------------------------- | ---------------------------------------------------------- |
-| None    | `--parser <string>`<br />`--parser ./my-parser` | `parser: "<string>"`<br />`parser: require("./my-parser")` |
+| Default | CLI Override        | API Override         |
+| ------- | ------------------- | -------------------- |
+| None    | `--parser <string>` | `parser: "<string>"` |
 
 Note: the default value was `"babylon"` until v1.13.0.
+
+Note: the Custom parser API has been removed in v3.0.0. Use [plugins](plugins.md) instead ([how to migrate](api.md#custom-parser-api)).
 
 <a name="filepath"></a>
 
@@ -449,15 +487,15 @@ Valid options:
 - `"auto"` – Format embedded code if Prettier can automatically identify it.
 - `"off"` - Never automatically format embedded code.
 
-| Default  | CLI Override                         | API Override                        |
-| -------- | ------------------------------------ | ----------------------------------- |
-| `"auto"` | `--embedded-language-formatting=off` | `embeddedLanguageFormatting: "off"` |
+| Default  | CLI Override                                                | API Override                                               |
+| -------- | ----------------------------------------------------------- | ---------------------------------------------------------- |
+| `"auto"` | <code>--embedded-language-formatting=<off&#124;auto></code> | <code>embeddedLanguageFormatting: "<off&#124;auto>"</code> |
 
 ## Single Attribute Per Line
 
 _First available in v2.6.0_
 
-Enforce single attribute per line in HTML, Vue and JSX.
+Enforce single attribute per line in HTML, Vue, and JSX.
 
 Valid options:
 

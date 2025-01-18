@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import styleText from "node-style-text";
 import outdent from "outdent";
 import semver from "semver";
 import {
@@ -7,8 +7,7 @@ import {
   waitForEnter,
 } from "../utils.js";
 
-const outdentString = outdent.string;
-
+const RELEASE_URL_BASE = "https://github.com/prettier/prettier/releases/new?";
 export function getReleaseUrl(version, previousVersion) {
   const semverDiff = semver.diff(version, previousVersion);
   const isPatch = semverDiff === "patch";
@@ -26,33 +25,39 @@ export function getReleaseUrl(version, previousVersion) {
       body: `🔗 [Release note](https://prettier.io/${blogPostInfo.path})`,
     });
   }
-  body = encodeURIComponent(body);
-  return `https://github.com/prettier/prettier/releases/new?tag=${version}&title=${version}&body=${body}`;
+  const parameters = new URLSearchParams({
+    tag: version,
+    title: version,
+    body,
+  });
+  return `${RELEASE_URL_BASE}${parameters}`;
 }
 
 export default async function showInstructionsAfterNpmPublish({
   version,
   previousVersion,
+  next,
 }) {
+  if (next) {
+    console.log(`${styleText.green.bold(`Prettier ${version} published!`)}`);
+    await waitForEnter();
+    return;
+  }
+
   const releaseUrl = getReleaseUrl(version, previousVersion);
-
   console.log(
-    outdentString(chalk`
-      {green.bold Prettier ${version} published!}
+    outdent`
+      ${styleText.green.bold(`Prettier ${version} published!`)}
 
-      {yellow.bold Some manual steps are necessary.}
+      ${styleText.yellow.bold("Some manual steps are necessary.")}
 
-      {bold.underline Create a GitHub Release}
-      - Go to {cyan.underline ${releaseUrl}}
-      - Press {bgGreen.black  Publish release }
-
-      {bold.underline Test the new release}
-      - In a new session, run {yellow npm i prettier@latest} in another directory
-      - Test the API and CLI
+      ${styleText.bold.underline("Create a GitHub Release")}
+      - Go to ${styleText.cyan.underline(releaseUrl)}
+      - Press ${styleText.bgGreen.black("Publish release")}
 
       After that, we can proceed to bump this repo's Prettier dependency.
-      Press ENTER to continue.
-    `)
+    `,
   );
+
   await waitForEnter();
 }

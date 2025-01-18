@@ -1,31 +1,13 @@
-/* globals prettier prettierPlugins parsersLocation */
+/* globals prettier prettierPlugins prettierPackageManifest */
 
 "use strict";
 
-const imported = Object.create(null);
-function importScriptOnce(url) {
-  if (!imported[url]) {
-    imported[url] = true;
-    importScripts(url);
-  }
-}
-
-importScripts("lib/parsers-location.js");
+importScripts("lib/package-manifest.js");
 importScripts("lib/standalone.js");
 
-// this is required to only load parsers when we need them
-const parsers = Object.create(null);
-for (const file in parsersLocation) {
-  const { parsers: moduleParsers, property } = parsersLocation[file];
-  const url = `lib/${file}`;
-  for (const parserName of moduleParsers) {
-    Object.defineProperty(parsers, parserName, {
-      get() {
-        importScriptOnce(url);
-        return prettierPlugins[property].parsers[parserName];
-      },
-    });
-  }
+// TODO[@fisker]: Lazy load plugins
+for (const { file } of prettierPackageManifest.builtinPlugins) {
+  importScripts(`lib/${file}`);
 }
 
 const docExplorerPlugin = {
@@ -34,7 +16,7 @@ const docExplorerPlugin = {
       parse: (text) =>
         new Function(
           `{ ${Object.keys(prettier.doc.builders)} }`,
-          `const result = (${text || "''"}\n); return result;`
+          `const result = (${text || "''"}\n); return result;`,
         )(prettier.doc.builders),
       astFormat: "doc-explorer",
     },
@@ -47,10 +29,12 @@ const docExplorerPlugin = {
   languages: [{ name: "doc-explorer", parsers: ["doc-explorer"] }],
 };
 
-self.onmessage = function (event) {
+const plugins = [...Object.values(prettierPlugins), docExplorerPlugin];
+
+self.onmessage = async function (event) {
   self.postMessage({
     uid: event.data.uid,
-    message: handleMessage(event.data.message),
+    message: await handleMessage(event.data.message),
   });
 };
 
@@ -61,11 +45,11 @@ function serializeAst(ast) {
       value instanceof Error
         ? { name: value.name, message: value.message, ...value }
         : typeof value === "bigint"
-        ? `BigInt('${String(value)}')`
-        : typeof value === "symbol"
-        ? String(value)
-        : value,
-    2
+          ? `BigInt('${String(value)}')`
+          : typeof value === "symbol"
+            ? String(value)
+            : value,
+    2,
   );
 }
 
@@ -78,33 +62,28 @@ function handleMessage(message) {
   }
 }
 
-function handleMetaMessage() {
+async function handleMetaMessage() {
+  const supportInfo = await prettier.getSupportInfo({ plugins });
+
   return {
     type: "meta",
-    supportInfo: JSON.parse(
-      JSON.stringify(
-        prettier.getSupportInfo({
-          showUnreleased: true,
-          plugins: [docExplorerPlugin],
-        })
-      )
-    ),
+    // eslint-disable-next-line unicorn/prefer-structured-clone
+    supportInfo: JSON.parse(JSON.stringify(supportInfo)),
     version: prettier.version,
   };
 }
 
-function handleFormatMessage(message) {
-  const plugins = [{ parsers }, docExplorerPlugin];
+async function handleFormatMessage(message) {
   const options = { ...message.options, plugins };
 
   delete options.ast;
   delete options.doc;
   delete options.output2;
 
-  const formatResult = formatCode(
+  const formatResult = await formatCode(
     message.code,
     options,
-    message.debug.rethrowEmbedErrors
+    message.debug.rethrowEmbedErrors,
   );
 
   const response = {
@@ -119,11 +98,29 @@ function handleFormatMessage(message) {
     },
   };
 
-  if (message.debug.ast) {
+  const isPrettier2 = prettier.version.startsWith("2.");
+
+  for (const key of ["ast", "preprocessedAst"]) {
+    if (!message.debug[key]) {
+      continue;
+    }
+
+    const preprocessForPrint = key === "preprocessedAst";
+
+    if (isPrettier2 && preprocessForPrint) {
+      response.debug[key] = "/* not supported for Prettier 2.x */";
+      continue;
+    }
+
     let ast;
     let errored = false;
     try {
-      ast = serializeAst(prettier.__debug.parse(message.code, options).ast);
+      const parsed = await prettier.__debug.parse(
+        message.code,
+        options,
+        isPrettier2 ? false : { preprocessForPrint },
+      );
+      ast = serializeAst(parsed.ast);
     } catch (e) {
       errored = true;
       ast = String(e);
@@ -131,19 +128,19 @@ function handleFormatMessage(message) {
 
     if (!errored) {
       try {
-        ast = formatCode(ast, { parser: "json", plugins }).formatted;
+        ast = (await formatCode(ast, { parser: "json", plugins })).formatted;
       } catch {
         ast = serializeAst(ast);
       }
     }
-    response.debug.ast = ast;
+    response.debug[key] = ast;
   }
 
   if (message.debug.doc) {
     try {
-      response.debug.doc = prettier.__debug.formatDoc(
-        prettier.__debug.printToDoc(message.code, options),
-        { plugins }
+      response.debug.doc = await prettier.__debug.formatDoc(
+        await prettier.__debug.printToDoc(message.code, options),
+        { plugins },
       );
     } catch {
       response.debug.doc = "";
@@ -151,26 +148,27 @@ function handleFormatMessage(message) {
   }
 
   if (message.debug.comments) {
-    response.debug.comments = formatCode(
-      JSON.stringify(formatResult.comments || []),
-      { parser: "json", plugins }
+    response.debug.comments = (
+      await formatCode(JSON.stringify(formatResult.comments || []), {
+        parser: "json",
+        plugins,
+      })
     ).formatted;
   }
 
   if (message.debug.reformat) {
-    response.debug.reformatted = formatCode(
-      response.formatted,
-      options
+    response.debug.reformatted = (
+      await formatCode(response.formatted, options)
     ).formatted;
   }
 
   return response;
 }
 
-function formatCode(text, options, rethrowEmbedErrors) {
+async function formatCode(text, options, rethrowEmbedErrors) {
   try {
     self.PRETTIER_DEBUG = rethrowEmbedErrors;
-    return prettier.formatWithCursor(text, options);
+    return await prettier.formatWithCursor(text, options);
   } catch (e) {
     if (e.constructor && e.constructor.name === "SyntaxError") {
       // Likely something wrong with the user's code

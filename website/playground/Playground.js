@@ -1,19 +1,18 @@
 import * as React from "react";
-
 import { Button, ClipboardButton } from "./buttons.js";
+import getCodeSample from "./codeSamples.mjs";
+import generateDummyId from "./dummyId.js";
 import EditorState from "./EditorState.js";
+import { shallowEqual } from "./helpers.js";
+import formatMarkdown from "./markdown.js";
 import { DebugPanel, InputPanel, OutputPanel } from "./panels.js";
 import PrettierFormat from "./PrettierFormat.js";
-import { shallowEqual } from "./helpers.js";
-import * as urlHash from "./urlHash.js";
-import formatMarkdown from "./markdown.js";
-import * as util from "./util.js";
-import getCodeSample from "./codeSamples.js";
-
 import { Sidebar, SidebarCategory } from "./sidebar/components.js";
-import SidebarOptions from "./sidebar/SidebarOptions.js";
-import Option from "./sidebar/options.js";
 import { Checkbox } from "./sidebar/inputs.js";
+import Option from "./sidebar/options.js";
+import SidebarOptions from "./sidebar/SidebarOptions.js";
+import * as urlHash from "./urlHash.js";
+import * as util from "./util.js";
 
 const CATEGORIES_ORDER = [
   "Global",
@@ -37,6 +36,8 @@ const ENABLED_OPTIONS = [
   "singleQuote",
   "bracketSpacing",
   "jsxSingleQuote",
+  // TODO: remove this comment out when 3.5.0 is released
+  // "objectWrap",
   "quoteProps",
   "arrowParens",
   "trailingComma",
@@ -48,6 +49,7 @@ const ENABLED_OPTIONS = [
   "embeddedLanguageFormatting",
   "bracketSameLine",
   "singleAttributePerLine",
+  "experimentalTernaries",
 ];
 
 class Playground extends React.Component {
@@ -58,14 +60,35 @@ class Playground extends React.Component {
 
     const defaultOptions = util.getDefaults(
       props.availableOptions,
-      ENABLED_OPTIONS
+      ENABLED_OPTIONS,
     );
 
     const options = Object.assign(defaultOptions, original.options);
 
-    // backwards support for old parser `babylon`
+    // 0.0.0 ~ 0.0.10
     if (options.parser === "babylon") {
       options.parser = "babel";
+    }
+
+    // 0.0.0 ~ 0.0.10
+    if (options.useFlowParser) {
+      options.parser ??= "flow";
+    }
+
+    // 1.8.2 ~ 1.9.0
+    if (typeof options.proseWrap === "boolean") {
+      options.proseWrap = options.proseWrap ? "always" : "never";
+    }
+
+    // 0.0.0 ~ 1.9.0
+    if (typeof options.trailingComma === "boolean") {
+      options.trailingComma = options.trailingComma ? "es5" : "none";
+    }
+
+    // 0.17.0 ~ 2.4.0
+    if (options.jsxBracketSameLine) {
+      delete options.jsxBracketSameLine;
+      options.bracketSameLine ??= options.jsxBracketSameLine;
     }
 
     const codeSample = getCodeSample(options.parser);
@@ -81,12 +104,20 @@ class Playground extends React.Component {
     this.setContent = (content) => this.setState({ content });
     this.clearContent = this.setContent.bind(this, "");
     this.resetOptions = () => this.setState({ options: defaultOptions });
-    this.setSelection = (selection) => this.setState({ selection });
+    this.setSelection = (selection) => {
+      this.setState({ selection });
+      if (this.state.trackCursorOffset) {
+        this.handleOptionValueChange(
+          this.cursorOffsetOption,
+          util.convertSelectionToRange(selection, this.state.content)[0],
+        );
+      }
+    };
     this.setSelectionAsRange = () => {
       const { selection, content, options } = this.state;
       const [rangeStart, rangeEnd] = util.convertSelectionToRange(
         selection,
-        content
+        content,
       );
       const updatedOptions = { ...options, rangeStart, rangeEnd };
       if (rangeStart === rangeEnd) {
@@ -98,13 +129,17 @@ class Playground extends React.Component {
 
     this.enabledOptions = orderOptions(props.availableOptions, ENABLED_OPTIONS);
     this.rangeStartOption = props.availableOptions.find(
-      (opt) => opt.name === "rangeStart"
+      (opt) => opt.name === "rangeStart",
     );
     this.rangeEndOption = props.availableOptions.find(
-      (opt) => opt.name === "rangeEnd"
+      (opt) => opt.name === "rangeEnd",
+    );
+    this.cursorOffsetOption = props.availableOptions.find(
+      (opt) => opt.name === "cursorOffset",
     );
 
-    this.handleInputPanelFormat = this.handleInputPanelFormat.bind(this);
+    this.formatInput = this.formatInput.bind(this);
+    this.insertDummyId = this.insertDummyId.bind(this);
   }
 
   componentDidUpdate(_, prevState) {
@@ -148,6 +183,7 @@ class Playground extends React.Component {
       ...ENABLED_OPTIONS,
       "rangeStart",
       "rangeEnd",
+      "cursorOffset",
     ]);
     const cliOptions = util.buildCliArgs(orderedOptions, options);
 
@@ -164,7 +200,7 @@ class Playground extends React.Component {
     });
   }
 
-  handleInputPanelFormat() {
+  formatInput() {
     if (this.state.options.parser !== "doc-explorer") {
       return;
     }
@@ -181,21 +217,32 @@ class Playground extends React.Component {
           return;
         }
 
-        return {
-          value: formatted,
-          cursor: util.convertOffsetToPosition(cursorOffset, formatted),
-        };
+        this.setState({
+          content: formatted,
+          selection: util.convertOffsetToSelection(cursorOffset, formatted),
+        });
       });
   }
 
-  render() {
-    const { worker, version } = this.props;
-    const { content, options } = this.state;
+  insertDummyId() {
+    const { content, selection } = this.state;
+    const dummyId = generateDummyId();
+    const range = util.convertSelectionToRange(selection, content);
+    const modifiedContent =
+      content.slice(0, range[0]) + dummyId + content.slice(range[1]);
 
-    // TODO: remove this when v2.3.0 is released
-    const [major, minor] = version.split(".", 2).map(Number);
-    const showShowComments =
-      Number.isNaN(major) || (major === 2 && minor >= 3) || major > 2;
+    this.setState({
+      content: modifiedContent,
+      selection: util.convertOffsetToSelection(
+        range[0] + dummyId.length,
+        modifiedContent,
+      ),
+    });
+  }
+
+  render() {
+    const { worker } = this.props;
+    const { content, options } = this.state;
 
     return (
       <EditorState>
@@ -206,12 +253,13 @@ class Playground extends React.Component {
             code={content}
             options={options}
             debugAst={editorState.showAst}
+            debugPreprocessedAst={editorState.showPreprocessedAst}
             debugDoc={editorState.showDoc}
-            debugComments={showShowComments && editorState.showComments}
+            debugComments={editorState.showComments}
             reformat={editorState.showSecondFormat}
             rethrowEmbedErrors={editorState.rethrowEmbedErrors}
           >
-            {({ formatted, debug }) => {
+            {({ formatted, debug, cursorOffset }) => {
               const fullReport = this.getMarkdown({
                 formatted,
                 reformatted: debug.reformatted,
@@ -258,6 +306,49 @@ class Playground extends React.Component {
                           Set selected text as range
                         </Button>
                       </SidebarCategory>
+                      <SidebarCategory title="Cursor">
+                        <Option
+                          option={this.cursorOffsetOption}
+                          value={
+                            options.cursorOffset >= 0
+                              ? options.cursorOffset
+                              : ""
+                          }
+                          onChange={this.handleOptionValueChange}
+                        />
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: "10px",
+                          }}
+                        >
+                          <Checkbox
+                            label="track"
+                            checked={Boolean(this.state.trackCursorOffset)}
+                            onChange={() =>
+                              this.setState((state) => ({
+                                trackCursorOffset: !state.trackCursorOffset,
+                              }))
+                            }
+                          />
+                          {options.cursorOffset >= 0 && (
+                            <>
+                              <Button
+                                onClick={() => {
+                                  this.handleOptionValueChange(
+                                    this.cursorOffsetOption,
+                                    -1,
+                                  );
+                                }}
+                              >
+                                Reset
+                              </Button>
+                              <label>Result: {cursorOffset}</label>
+                            </>
+                          )}
+                        </div>
+                      </SidebarCategory>
                       <SidebarCategory title="Debug">
                         <Checkbox
                           label="show input"
@@ -270,17 +361,20 @@ class Playground extends React.Component {
                           onChange={editorState.toggleAst}
                         />
                         <Checkbox
+                          label="show preprocessed AST"
+                          checked={editorState.showPreprocessedAst}
+                          onChange={editorState.togglePreprocessedAst}
+                        />
+                        <Checkbox
                           label="show doc"
                           checked={editorState.showDoc}
                           onChange={editorState.toggleDoc}
                         />
-                        {showShowComments && (
-                          <Checkbox
-                            label="show comments"
-                            checked={editorState.showComments}
-                            onChange={editorState.toggleComments}
-                          />
-                        )}
+                        <Checkbox
+                          label="show comments"
+                          checked={editorState.showComments}
+                          onChange={editorState.toggleComments}
+                        />
                         <Checkbox
                           label="show output"
                           checked={editorState.showOutput}
@@ -317,12 +411,17 @@ class Playground extends React.Component {
                           mode={util.getCodemirrorMode(options.parser)}
                           ruler={options.printWidth}
                           value={content}
+                          selection={this.state.selection}
                           codeSample={getCodeSample(options.parser)}
                           overlayStart={options.rangeStart}
                           overlayEnd={options.rangeEnd}
                           onChange={this.setContent}
                           onSelectionChange={this.setSelection}
-                          onFormat={this.handleInputPanelFormat}
+                          extraKeys={{
+                            "Shift-Alt-F": this.formatInput,
+                            "Ctrl-Q": this.insertDummyId,
+                          }}
+                          foldGutter={options.parser === "doc-explorer"}
                         />
                       ) : null}
                       {editorState.showAst ? (
@@ -331,10 +430,16 @@ class Playground extends React.Component {
                           autoFold={util.getAstAutoFold(options.parser)}
                         />
                       ) : null}
+                      {editorState.showPreprocessedAst ? (
+                        <DebugPanel
+                          value={debug.preprocessedAst || ""}
+                          autoFold={util.getAstAutoFold(options.parser)}
+                        />
+                      ) : null}
                       {editorState.showDoc ? (
                         <DebugPanel value={debug.doc || ""} />
                       ) : null}
-                      {showShowComments && editorState.showComments ? (
+                      {editorState.showComments ? (
                         <DebugPanel
                           value={debug.comments || ""}
                           autoFold={util.getAstAutoFold(options.parser)}
@@ -369,6 +474,12 @@ class Playground extends React.Component {
                             mode={util.getCodemirrorMode(options.parser)}
                             value={formatted}
                             ruler={options.printWidth}
+                            overlayStart={
+                              cursorOffset === -1 ? undefined : cursorOffset
+                            }
+                            overlayEnd={
+                              cursorOffset === -1 ? undefined : cursorOffset + 1
+                            }
                           />
                         )
                       ) : null}
@@ -396,11 +507,18 @@ class Playground extends React.Component {
                           // `undefined`.
                           { ...options, parser: undefined },
                           null,
-                          2
+                          2,
                         )}
                       >
                         Copy config JSON
                       </ClipboardButton>
+                      <Button
+                        onClick={this.insertDummyId}
+                        onMouseDown={(event) => event.preventDefault()} // prevent button from focusing
+                        title="Generate a nonsense variable name (Ctrl-Q)"
+                      >
+                        Insert dummy id
+                      </Button>
                     </div>
                     <div className="bottom-bar-buttons bottom-bar-buttons-right">
                       <ClipboardButton copy={window.location.href}>
@@ -418,7 +536,7 @@ class Playground extends React.Component {
                       </ClipboardButton>
                       <a
                         href={getReportLink(
-                          showFullReport ? fullReport : COPY_MESSAGE
+                          showFullReport ? fullReport : COPY_MESSAGE,
                         )}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -458,8 +576,8 @@ function getSecondFormat(formatted, reformatted) {
   return formatted === ""
     ? ""
     : formatted === reformatted
-    ? "✓ Second format is unchanged."
-    : reformatted;
+      ? "✓ Second format is unchanged."
+      : reformatted;
 }
 
 export default Playground;

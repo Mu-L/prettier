@@ -1,6 +1,4 @@
-"use strict";
-
-const prettier = require("prettier-local");
+import prettier from "../../config/prettier-entry.js";
 const { group, ifBreak } = prettier.doc.builders;
 const { printDocToString } = prettier.doc.printer;
 const docToString = (doc, options) =>
@@ -22,6 +20,6 @@ test("`ifBreak` inside `group`", () => {
   ];
 
   expect(
-    docs.map((doc) => docToString(doc, { printWidth: FLAT_TEXT.length }))
+    docs.map((doc) => docToString(doc, { printWidth: FLAT_TEXT.length })),
   ).toStrictEqual(Array.from({ length: docs.length }, () => FLAT_TEXT));
 });

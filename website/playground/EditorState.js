@@ -1,6 +1,5 @@
 import * as React from "react";
-
-import { stateToggler, shallowEqual } from "./helpers.js";
+import { shallowEqual, stateToggler } from "./helpers.js";
 import * as storage from "./storage.js";
 
 export default class EditorState extends React.Component {
@@ -9,6 +8,7 @@ export default class EditorState extends React.Component {
     this.state = {
       showSidebar: window.innerWidth > window.innerHeight,
       showAst: false,
+      showPreprocessedAst: false,
       showDoc: false,
       showComments: false,
       showSecondFormat: false,
@@ -17,6 +17,8 @@ export default class EditorState extends React.Component {
       rethrowEmbedErrors: false,
       toggleSidebar: () => this.setState(stateToggler("showSidebar")),
       toggleAst: () => this.setState(stateToggler("showAst")),
+      togglePreprocessedAst: () =>
+        this.setState(stateToggler("showPreprocessedAst")),
       toggleDoc: () => this.setState(stateToggler("showDoc")),
       toggleComments: () => this.setState(stateToggler("showComments")),
       toggleSecondFormat: () => this.setState(stateToggler("showSecondFormat")),

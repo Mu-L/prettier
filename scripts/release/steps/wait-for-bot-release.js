@@ -1,9 +1,6 @@
-import chalk from "chalk";
+import styleText from "node-style-text";
 import outdent from "outdent";
-import fetch from "node-fetch";
-import { waitForEnter, logPromise } from "../utils.js";
-
-const outdentString = outdent.string;
+import { logPromise, waitForEnter } from "../utils.js";
 
 export async function isVersionReleased(version) {
   const response = await fetch("https://registry.npmjs.org/prettier/");
@@ -24,49 +21,57 @@ async function checkBotPermission() {
   return maintainers.some(({ name }) => name === "prettier-bot");
 }
 
-checkBotPermission();
-
 const sleep = () =>
   new Promise((resolve) => {
     setTimeout(resolve, 30_000);
   });
 
-export default async function waitForBotRelease({ dry, version }) {
+export default async function waitForBotRelease({ dry, version, next }) {
   if (dry) {
     return;
   }
 
   if (!(await checkBotPermission())) {
     console.log(
-      outdentString(chalk/* indent */ `
-        1. Go to {green.underline https://www.npmjs.com/package/prettier/access}
-        2. Add "{yellow prettier-bot}" as prettier package maintainer.
-
-        Press ENTER to continue.
-      `)
+      outdent`
+        1. Go to ${styleText.green.underline(
+          "https://www.npmjs.com/package/prettier/access",
+        )}
+        2. Add "${styleText.yellow("prettier-bot")}" as prettier package maintainer.
+      `,
     );
 
     await waitForEnter();
   }
 
   console.log(
-    outdentString(chalk/* indent */ `
-      1. Go to {green.underline https://www.npmjs.com/package/prettier/access}
-      2. Make sure "{yellow Publishing access}" section is set to "{yellow Require two-factor authentication or automation tokens}".
-
-      Press ENTER to continue.
-    `)
+    outdent`
+      1. Go to ${styleText.green.underline(
+        "https://www.npmjs.com/package/prettier/access",
+      )}
+      2. Make sure "${styleText.yellow(
+        "Publishing access",
+      )}" section is set to "${styleText.yellow(
+        "Require two-factor authentication or an automation or granular access token",
+      )}".
+    `,
   );
 
   await waitForEnter();
 
   console.log(
-    outdentString(chalk/* indent */ `
-      1. Go to {green.underline https://github.com/prettier/release-workflow/actions/workflows/release.yml}
-      2. Click "{green Run workflow}" button, type "{yellow.underline ${version}}" in "Version to release", uncheck all checkboxes, hit the "{bgGreen Run workflow}" button.
-
-      Press ENTER to continue.
-    `)
+    outdent`
+      1. Go to ${styleText.green.underline(
+        "https://github.com/prettier/release-workflow/actions/workflows/release.yml",
+      )}
+      2. Click "${styleText.green(
+        "Run workflow",
+      )}" button, type "${styleText.yellow.underline(
+        version,
+      )}" in "Version to release", ${
+        next ? 'check only "Unstable version"' : "uncheck all checkboxes"
+      }, hit the "${styleText.bgGreen("Run workflow")}" button.
+    `,
   );
 
   await waitForEnter();
@@ -76,7 +81,7 @@ export default async function waitForBotRelease({ dry, version }) {
     try {
       released = await logPromise(
         "Checking release status",
-        isVersionReleased(version)
+        isVersionReleased(version),
       );
     } catch {
       // No op
